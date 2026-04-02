@@ -1,11 +1,11 @@
-# Research Skills
+# 🔬🧐 Research Skills
 
-This repo currently contains Codex skills for research 🔬🧐 :
+This repo currently contains skills for research:
 
 - `literature-survey`: for topic-level literature surveys
 - `zotero-better-note-summary`: for single-paper Zotero notes
 
-
+🤗 Originally, these skills were created for Codex, but you can also try applying them to Claude Code, etc.
 ## literature-survey
 
 Use this skill when you need a structured survey for a topic, question, or paper set.
