@@ -1,0 +1,4 @@
+interface:
+  display_name: "Literature Survey"
+  short_description: "Comprehensive literature survey workflows"
+  default_prompt: "Use $literature-survey to research a topic comprehensively and write a balanced markdown survey."
