@@ -1,4 +1,4 @@
 interface:
   display_name: "Zotero Better Note Summary"
-  short_description: "Create concise Zotero Better Note summaries"
-  default_prompt: "Use $zotero-better-note-summary to create a concise Chinese Better Note markdown summary for this Zotero paper."
+  short_description: "Create or refine Zotero Better Note summaries"
+  default_prompt: "Use $zotero-better-note-summary to verify Better Notes and bridge setup, check for an existing summary, and create or refine a concise Chinese Better Note markdown summary for this Zotero paper."

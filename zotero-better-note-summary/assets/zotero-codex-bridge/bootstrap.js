@@ -254,12 +254,18 @@ async function serializeItem(item) {
 }
 
 function serializeNoteItem(noteItem) {
+  const noteHTML = noteItem && typeof noteItem.getNote === "function"
+    ? noteItem.getNote() || ""
+    : "";
+
   return {
     id: noteItem.id,
     key: noteItem.key,
     libraryID: noteItem.libraryID,
     parentID: noteItem.parentID,
     title: noteItem.getNoteTitle ? noteItem.getNoteTitle() : "",
+    noteHTML,
+    noteText: htmlToText(noteHTML),
   };
 }
 
@@ -314,6 +320,25 @@ function escapeHtml(text) {
     .replace(/'/g, "&#39;");
 }
 
+function htmlToText(html) {
+  return String(html || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|li)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function fallbackMarkdownToHtml(markdown) {
   const blocks = String(markdown)
     .replace(/\r\n/g, "\n")
@@ -354,16 +379,97 @@ async function markdownToHtml(markdown) {
   return fallbackMarkdownToHtml(markdown);
 }
 
+function buildFinalMarkdown(markdown, noteTitle) {
+  const trimmed = String(markdown || "").trim();
+  if (!trimmed) {
+    throw new Error("Markdown content is empty");
+  }
+
+  if (noteTitle) {
+    return `# ${String(noteTitle).trim()}\n\n${trimmed}`;
+  }
+  return trimmed;
+}
+
+async function openNoteItem(noteItem) {
+  try {
+    if (
+      Zotero.BetterNotes &&
+      Zotero.BetterNotes.hooks &&
+      typeof Zotero.BetterNotes.hooks.onOpenNote === "function"
+    ) {
+      await Zotero.BetterNotes.hooks.onOpenNote(noteItem.id, "tab");
+    } else {
+      await Zotero.getMainWindow().ZoteroPane.selectItem(noteItem.id);
+    }
+  } catch (error) {
+    log(`failed to open note ${noteItem.id}: ${error}`);
+  }
+}
+
+function getTargetParentItem(payload) {
+  let parentItem = null;
+  if (payload.parentKey) {
+    parentItem = findItemByKey(payload.parentKey, payload.libraryID);
+  }
+
+  return parentItem;
+}
+
+async function getRequestParentItem(payload) {
+  let parentItem = getTargetParentItem(payload);
+  if (!parentItem && payload.selected) {
+    parentItem = await getSelectedTopLevelItem();
+  }
+
+  parentItem = normalizeItem(parentItem);
+  if (!parentItem) {
+    throw new Error("Parent item is required");
+  }
+  return parentItem;
+}
+
+function getChildNoteItems(parentItem) {
+  if (!parentItem || typeof parentItem.getNotes !== "function") {
+    return [];
+  }
+
+  const noteIDs = parentItem.getNotes() || [];
+  return Zotero.Items.get(noteIDs)
+    .filter((item) => item && typeof item.isNote === "function" && item.isNote());
+}
+
 async function handlePing() {
   return {
     bridge: "codex-zotero-bridge",
-    version: "0.1.0",
+    version: "0.2.0",
     betterNotesAvailable: Boolean(
       Zotero.BetterNotes &&
         Zotero.BetterNotes.api &&
         Zotero.BetterNotes.api.convert &&
         typeof Zotero.BetterNotes.api.convert.md2html === "function",
     ),
+  };
+}
+
+async function handleListNotes(payload) {
+  const parentItem = await getRequestParentItem(payload);
+  const notes = getChildNoteItems(parentItem).map((noteItem) => {
+    const serialized = serializeNoteItem(noteItem);
+    if (!payload.includeContent) {
+      delete serialized.noteHTML;
+      delete serialized.noteText;
+    }
+    return serialized;
+  });
+
+  return {
+    notes,
+    parent: {
+      id: parentItem.id,
+      key: parentItem.key,
+      title: parentItem.getField ? parentItem.getField("title") || "" : "",
+    },
   };
 }
 
@@ -385,28 +491,8 @@ async function handleGetItem(payload) {
 }
 
 async function handleCreateNote(payload) {
-  let parentItem = null;
-  if (payload.parentKey) {
-    parentItem = findItemByKey(payload.parentKey, payload.libraryID);
-  } else if (payload.selected) {
-    parentItem = await getSelectedTopLevelItem();
-  }
-
-  parentItem = normalizeItem(parentItem);
-  if (!parentItem) {
-    throw new Error("Parent item is required to create a note");
-  }
-
-  const markdown = String(payload.markdown || "").trim();
-  if (!markdown) {
-    throw new Error("Markdown content is empty");
-  }
-
-  let finalMarkdown = markdown;
-  if (payload.noteTitle) {
-    finalMarkdown = `# ${String(payload.noteTitle).trim()}\n\n${finalMarkdown}`;
-  }
-
+  const parentItem = await getRequestParentItem(payload);
+  const finalMarkdown = buildFinalMarkdown(payload.markdown, payload.noteTitle);
   const html = await markdownToHtml(finalMarkdown);
   const noteItem = new Zotero.Item("note");
   noteItem.libraryID = parentItem.libraryID;
@@ -415,19 +501,7 @@ async function handleCreateNote(payload) {
   await noteItem.saveTx();
 
   if (payload.openInWindow) {
-    try {
-      if (
-        Zotero.BetterNotes &&
-        Zotero.BetterNotes.hooks &&
-        typeof Zotero.BetterNotes.hooks.onOpenNote === "function"
-      ) {
-        await Zotero.BetterNotes.hooks.onOpenNote(noteItem.id, "tab");
-      } else {
-        await Zotero.getMainWindow().ZoteroPane.selectItem(noteItem.id);
-      }
-    } catch (error) {
-      log(`failed to open note ${noteItem.id}: ${error}`);
-    }
+    await openNoteItem(noteItem);
   }
 
   return {
@@ -437,6 +511,34 @@ async function handleCreateNote(payload) {
       key: parentItem.key,
       title: parentItem.getField ? parentItem.getField("title") || "" : "",
     },
+  };
+}
+
+async function handleUpdateNote(payload) {
+  const noteItem = findItemByKey(payload.noteKey, payload.libraryID);
+  if (!noteItem || typeof noteItem.isNote !== "function" || !noteItem.isNote()) {
+    throw new Error(`Cannot find Zotero note with key ${payload.noteKey}`);
+  }
+
+  const finalMarkdown = buildFinalMarkdown(payload.markdown, payload.noteTitle);
+  const html = await markdownToHtml(finalMarkdown);
+  noteItem.setNote(html);
+  await noteItem.saveTx();
+
+  if (payload.openInWindow) {
+    await openNoteItem(noteItem);
+  }
+
+  const parentItem = noteItem.parentItem || null;
+  return {
+    note: serializeNoteItem(noteItem),
+    parent: parentItem
+      ? {
+          id: parentItem.id,
+          key: parentItem.key,
+          title: parentItem.getField ? parentItem.getField("title") || "" : "",
+        }
+      : null,
   };
 }
 
@@ -450,8 +552,12 @@ async function dispatchRequest(request) {
       return await handleGetSelectedItem();
     case "get-item":
       return await handleGetItem(payload);
+    case "list-notes":
+      return await handleListNotes(payload);
     case "create-note":
       return await handleCreateNote(payload);
+    case "update-note":
+      return await handleUpdateNote(payload);
     default:
       throw new Error(`Unsupported command: ${request.command}`);
   }

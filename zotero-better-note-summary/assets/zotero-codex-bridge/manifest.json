@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Codex Zotero Bridge",
-  "version": "0.1.0",
-  "description": "Bridge Codex with Zotero and Better Notes for automatic note creation.",
+  "version": "0.2.0",
+  "description": "Bridge Codex with Zotero and Better Notes for automatic note creation and updates.",
   "author": "OpenAI Codex",
   "applications": {
     "zotero": {

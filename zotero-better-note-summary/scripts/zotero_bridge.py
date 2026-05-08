@@ -101,6 +101,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional Zotero library ID.",
     )
 
+    list_notes = subparsers.add_parser(
+        "list-notes",
+        help="List child notes under a Zotero item.",
+    )
+    target_group = list_notes.add_mutually_exclusive_group(required=True)
+    target_group.add_argument(
+        "--selected",
+        action="store_true",
+        help="Use the currently selected Zotero item as the parent.",
+    )
+    target_group.add_argument(
+        "--parent-key",
+        help="Use the Zotero item with this key as the parent.",
+    )
+    list_notes.add_argument(
+        "--library-id",
+        type=int,
+        default=None,
+        help="Optional Zotero library ID for --parent-key lookups.",
+    )
+    list_notes.add_argument(
+        "--include-content",
+        action="store_true",
+        help="Include note HTML and plain text in the response.",
+    )
+
     create_note = subparsers.add_parser(
         "create-note",
         help="Create a child note under a Zotero item from Markdown content.",
@@ -145,6 +171,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="Open the created note after writing it.",
     )
 
+    update_note = subparsers.add_parser(
+        "update-note",
+        help="Replace an existing Zotero note with Markdown content.",
+    )
+    update_note.add_argument("--note-key", required=True, help="Zotero note item key.")
+    update_note.add_argument(
+        "--library-id",
+        type=int,
+        default=None,
+        help="Optional Zotero library ID for note lookups.",
+    )
+    update_note.add_argument(
+        "--markdown",
+        help="Markdown content to convert into the note body.",
+    )
+    update_note.add_argument(
+        "--markdown-file",
+        help="Path to a Markdown file. Use - to read from stdin.",
+    )
+    update_note.add_argument(
+        "--title",
+        default="论文总结",
+        help="Optional top heading inserted so the note has a stable title.",
+    )
+    update_note.add_argument(
+        "--no-title",
+        action="store_true",
+        help="Do not prepend a heading before the summary sections.",
+    )
+    update_note.add_argument(
+        "--open",
+        action="store_true",
+        help="Open the updated note after writing it.",
+    )
+
     return parser
 
 
@@ -178,6 +239,17 @@ def main() -> None:
         print_json(result, args.compact)
         return
 
+    if args.command == "list-notes":
+        payload = {
+            "selected": args.selected,
+            "parentKey": args.parent_key,
+            "libraryID": args.library_id,
+            "includeContent": args.include_content,
+        }
+        result = require_success(send_request("list-notes", payload, args.timeout))
+        print_json(result, args.compact)
+        return
+
     if args.command == "create-note":
         markdown = read_markdown(args)
         payload = {
@@ -189,6 +261,19 @@ def main() -> None:
             "openInWindow": args.open,
         }
         result = require_success(send_request("create-note", payload, args.timeout))
+        print_json(result, args.compact)
+        return
+
+    if args.command == "update-note":
+        markdown = read_markdown(args)
+        payload = {
+            "noteKey": args.note_key,
+            "libraryID": args.library_id,
+            "markdown": markdown,
+            "noteTitle": None if args.no_title else args.title,
+            "openInWindow": args.open,
+        }
+        result = require_success(send_request("update-note", payload, args.timeout))
         print_json(result, args.compact)
         return
 
