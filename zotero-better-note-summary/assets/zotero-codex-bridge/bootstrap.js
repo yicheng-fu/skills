@@ -7,7 +7,10 @@ const BRIDGE_ROOT = "/tmp/zotero-codex-bridge";
 const REQUEST_DIR = `${BRIDGE_ROOT}/requests`;
 const RESPONSE_DIR = `${BRIDGE_ROOT}/responses`;
 
-const { classes: Cc, interfaces: Ci } = Components;
+// Zotero's bootstrap sandbox already exposes Cc/Ci. Use plugin-specific names
+// to avoid a top-level lexical redeclaration error during installation.
+const CodexCc = Components.classes;
+const CodexCi = Components.interfaces;
 
 function install() {}
 
@@ -31,7 +34,7 @@ function startBridgeTimer() {
   if (bridgeTimer) {
     return;
   }
-  bridgeTimer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+  bridgeTimer = CodexCc["@mozilla.org/timer;1"].createInstance(CodexCi.nsITimer);
   bridgeTimer.initWithCallback(
     () => {
       if (bridgeBusy) {
@@ -45,7 +48,7 @@ function startBridgeTimer() {
         });
     },
     1000,
-    Ci.nsITimer.TYPE_REPEATING_SLACK,
+    CodexCi.nsITimer.TYPE_REPEATING_SLACK,
   );
 }
 
@@ -69,7 +72,7 @@ function logError(error) {
 }
 
 function localFile(path) {
-  const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  const file = CodexCc["@mozilla.org/file/local;1"].createInstance(CodexCi.nsIFile);
   file.initWithPath(path);
   return file;
 }
@@ -82,7 +85,7 @@ function ensureDir(path) {
     }
     return;
   }
-  file.create(Ci.nsIFile.DIRECTORY_TYPE, 0o755);
+  file.create(CodexCi.nsIFile.DIRECTORY_TYPE, 0o755);
 }
 
 function ensureBridgeDirs() {
@@ -100,7 +103,7 @@ function listJsonFiles(path) {
 
   const entries = dir.directoryEntries;
   while (entries.hasMoreElements()) {
-    const file = entries.getNext().QueryInterface(Ci.nsIFile);
+    const file = entries.getNext().QueryInterface(CodexCi.nsIFile);
     if (file.isFile() && file.leafName.endsWith(".json")) {
       files.push(file);
     }
@@ -112,14 +115,14 @@ function listJsonFiles(path) {
 
 function readText(path) {
   const file = localFile(path);
-  const stream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(
-    Ci.nsIFileInputStream,
+  const stream = CodexCc["@mozilla.org/network/file-input-stream;1"].createInstance(
+    CodexCi.nsIFileInputStream,
   );
   stream.init(file, 0x01, 0o444, 0);
 
-  const converter = Cc[
+  const converter = CodexCc[
     "@mozilla.org/intl/converter-input-stream;1"
-  ].createInstance(Ci.nsIConverterInputStream);
+  ].createInstance(CodexCi.nsIConverterInputStream);
   converter.init(stream, "UTF-8", 0, 0);
 
   let result = "";
@@ -136,17 +139,17 @@ function readText(path) {
 function writeText(path, text) {
   const file = localFile(path);
   if (!file.exists()) {
-    file.create(Ci.nsIFile.NORMAL_FILE_TYPE, 0o644);
+    file.create(CodexCi.nsIFile.NORMAL_FILE_TYPE, 0o644);
   }
 
-  const stream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(
-    Ci.nsIFileOutputStream,
+  const stream = CodexCc["@mozilla.org/network/file-output-stream;1"].createInstance(
+    CodexCi.nsIFileOutputStream,
   );
   stream.init(file, 0x02 | 0x08 | 0x20, 0o644, 0);
 
-  const converter = Cc[
+  const converter = CodexCc[
     "@mozilla.org/intl/converter-output-stream;1"
-  ].createInstance(Ci.nsIConverterOutputStream);
+  ].createInstance(CodexCi.nsIConverterOutputStream);
   converter.init(stream, "UTF-8", 0, 0);
   converter.writeString(text);
   converter.close();
@@ -442,7 +445,7 @@ function getChildNoteItems(parentItem) {
 async function handlePing() {
   return {
     bridge: "codex-zotero-bridge",
-    version: "0.2.0",
+    version: "0.2.2",
     betterNotesAvailable: Boolean(
       Zotero.BetterNotes &&
         Zotero.BetterNotes.api &&
